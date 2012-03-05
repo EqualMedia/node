@@ -2037,6 +2037,15 @@ Handle<Object> SetupProcessObject(int argc, char *argv[]) {
   // assign it
   process->Set(String::NewSymbol("argv"), arguments);
 
+  // process.execArgv
+  Local<Array> execArgv = Array::New(option_end_index - 1);
+  for (j = 1, i = 0; j < option_end_index; j++, i++) {
+    execArgv->Set(Integer::New(i), String::New(argv[j]));
+  }
+  // assign it
+  process->Set(String::NewSymbol("execArgv"), execArgv);
+
+
   // create process.env
   Local<ObjectTemplate> envTemplate = ObjectTemplate::New();
   envTemplate->SetNamedPropertyHandler(EnvGetter,
@@ -2612,8 +2621,24 @@ void EmitExit(v8::Handle<v8::Object> process_l) {
 
 
 int Start(int argc, char *argv[]) {
+  // Logic to duplicate argv as Init() modifies arguments
+  // that are passed into it.
+  char **argv_copy = new char*[argc];
+
+  for (int i = 0; i < argc; i++) {
+    // Rare edge case that argv[0] is inaccessible.
+    if (argv[i] == NULL) {
+      argv_copy[i] = NULL;
+    } else {
+      argv_copy[i] = (char *) malloc ( strlen(argv[i]) );
+      strcpy (argv_copy[i], argv[i]);
+    }
+  }
+
+
   // This needs to run *before* V8::Initialize()
-  argv = Init(argc, argv);
+  // Use copy here as to not modify the original argv:
+  Init(argc, argv_copy);
 
   v8::V8::Initialize();
   v8::HandleScope handle_scope;
@@ -2622,6 +2647,7 @@ int Start(int argc, char *argv[]) {
   Persistent<v8::Context> context = v8::Context::New();
   v8::Context::Scope context_scope(context);
 
+  // Use original argv, as we're just copying values out of it.
   Handle<Object> process_l = SetupProcessObject(argc, argv);
   v8_typed_array::AttachBindings(context->Global());
 
